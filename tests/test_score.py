@@ -2,6 +2,7 @@ import unittest
 
 from open_model_card.brief import agent_brief
 from open_model_card.compare import recommend
+from open_model_card.guard import block_reason
 from open_model_card.report import build_report, plain_summary, to_markdown
 from open_model_card.score import score_task
 from open_model_card.tasks import TASKS
@@ -111,6 +112,25 @@ class CompareTests(unittest.TestCase):
         self.assertEqual(advice["operator"]["model"], "large")
         self.assertEqual(advice["cron"]["model"], "small")
         self.assertIn("large", advice["do_not_pair"])
+
+
+class GuardTests(unittest.TestCase):
+    def test_same_model_on_same_server_can_run_again(self):
+        reason = block_reason(
+            [{"where": "http://127.0.0.1:18434/v1", "model": "Qwen"}],
+            "http://127.0.0.1:18434/v1",
+            "Qwen",
+        )
+        self.assertIsNone(reason)
+
+    def test_other_loaded_model_blocks(self):
+        reason = block_reason(
+            [{"where": "http://127.0.0.1:8000/v1", "model": "MLX-35B"}],
+            "http://127.0.0.1:18434/v1",
+            "Qwen",
+        )
+        self.assertIn("was not started", reason)
+        self.assertIn("MLX-35B", reason)
 
 
 class BriefTests(unittest.TestCase):

@@ -46,12 +46,16 @@ def unload_model(base_url: str, model: str, api_key: str, timeout: float = 60) -
     return {"attempted": True, "unloaded": status == 200, "detail": f"HTTP {status}"}
 
 
-def list_models(base_url: str, api_key: str, timeout: float) -> list[str]:
+def model_rows(base_url: str, api_key: str, timeout: float) -> list[dict]:
     status, raw = _request(base_url.rstrip("/") + "/models", None, api_key, timeout)
     if status != 200:
         raise EndpointError(f"models endpoint returned {status}")
     body = json.loads(raw.decode())
-    return [item.get("id", "") for item in body.get("data", []) if item.get("id")]
+    return [item for item in body.get("data", []) if isinstance(item, dict)]
+
+
+def list_models(base_url: str, api_key: str, timeout: float) -> list[str]:
+    return [item.get("id", "") for item in model_rows(base_url, api_key, timeout) if item.get("id")]
 
 
 def complete(base_url: str, model: str, prompt: str, api_key: str, timeout: float, max_tokens: int = 200) -> dict[str, Any]:

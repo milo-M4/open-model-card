@@ -73,7 +73,7 @@ PAGE = """<!DOCTYPE html>
     <span><span class="lamp"></span> LOCAL ONLY</span>
   </header>
   <section class="panel warn">
-    <p class="help">Test one model at a time. This panel will not turn another model off for you. A test can take several minutes and can load a large model. A file found on the computer is not a model that is running.</p>
+    <p class="help">Test one model at a time. A new test will not start if a model is still loaded. This panel asks the server to unload when a test finishes. If that fails, wait before you press Run again.</p>
   </section>
 
   <section class="panel">
@@ -349,6 +349,12 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, {"files": find_model_files()})
                 return
             if path == "/api/run":
+                from open_model_card.guard import find_block
+
+                reason = find_block(data.get("base_url") or "", data.get("model") or "", _key(data))
+                if reason:
+                    self._json(409, {"error": reason})
+                    return
                 _start_run(data, self.out_dir)
                 self._json(200, {"started": True})
                 return
