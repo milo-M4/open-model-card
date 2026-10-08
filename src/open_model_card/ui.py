@@ -161,7 +161,14 @@ async function post(path, body) {
 document.querySelectorAll("[data-url]").forEach((button) => {
   button.onclick = () => {
     document.getElementById("base").value = button.dataset.url;
-    window.useHermesKey = false;
+    // If this is the Hermes llama.cpp port, auto-load the key from this Mac
+    if (button.dataset.url.includes(":18434")) {
+      window.useHermesKey = true;
+      document.getElementById("keynote").textContent = "Hermes key will be used from this Mac. It is not shown.";
+    } else {
+      window.useHermesKey = false;
+      document.getElementById("keynote").textContent = "The key stays on this computer. It is not shown here.";
+    }
   };
 });
 document.getElementById("hermeskey").onclick = () => {
