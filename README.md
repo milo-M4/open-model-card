@@ -55,4 +55,21 @@ Do not load two large models at once. This tool will not unload a model for you.
 - Whether it is good at law, medicine, or your private documents.
 - A ranking against a published leaderboard.
 
-Run the same command on two models, with the other model unloaded, and compare the two Markdown files.
+Run one model at a time. Save each card. Then compare them:
+
+```bash
+PYTHONPATH=src python3 -m open_model_card --compare reports
+```
+
+That writes `reports/choice.md`. It does not pick one winner for every job.
+
+| Job | Rule |
+|---|---|
+| Transcripts | Must keep the short meeting facts. Then the highest task pass rate. Speed is only a tie-break. |
+| Operator | Must follow the exact instruction and emit the JSON object. Then the highest pass rate. |
+| Light cron | Must follow the exact instruction, must not be a 20 GB resident, then the fastest. |
+
+A model that returns an empty reply is unstable and is not chosen. A 20 GB model is marked so you do not load two of them. The meeting check is a short extract, not your real transcripts. If two models tie there, judge them on one real transcript before you pin that cron job.
+
+For long-prompt speed, use [llama-benchy](https://github.com/eugr/llama-benchy). This card will not pretend a short count is an 8k prefill.
+

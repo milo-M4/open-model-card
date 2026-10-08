@@ -44,6 +44,20 @@ TASKS = [
         "forbidden": ["April", "500"],
     },
     {
+        "id": "meeting-facts",
+        "area": "transcript accuracy",
+        "kind": "facts",
+        "prompt": (
+            "Extract only the decisions from this meeting. Include each decision. "
+            "Do not add a decision that was not said.\n\n"
+            "Alex: Ship the badge order Friday.\n"
+            "Blair: Hold the newsletter.\n"
+            "Alex: Budget stays at 50 dollars."
+        ),
+        "required": ["Friday", "newsletter", "50"],
+        "forbidden": ["Monday", "100"],
+    },
+    {
         "id": "three-lines",
         "area": "format control",
         "kind": "hyphen_lines",

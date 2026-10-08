@@ -27,7 +27,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--skip-speed", action="store_true")
     parser.add_argument("--skip-tasks", action="store_true")
     parser.add_argument("--list-criteria", action="store_true")
+    parser.add_argument("--compare", default="", help="Directory of report JSON files to rank")
     args = parser.parse_args(argv)
+
+    if args.compare:
+        from open_model_card.compare import comparison_markdown, load_reports, recommend
+
+        folder = Path(args.compare)
+        reports = load_reports(folder)
+        advice = recommend(reports)
+        text = comparison_markdown(reports, advice)
+        out = folder / "choice.md"
+        out.write_text(text, encoding="utf-8")
+        print(text)
+        print(f"Wrote {out}")
+        return 0 if reports else 2
 
     if args.list_criteria:
         print("Speed: time to first content token, generation tok/s, wall time. Short prompt only.")
