@@ -76,5 +76,18 @@ The reviewing agent is instructed to recommend per job, cite the table, refuse t
 
 A model that returns an empty reply is unstable and is not chosen. A 20 GB model is marked so you do not load two of them. The meeting check is a short extract, not your real transcripts. If two models tie there, judge them on one real transcript before you pin that cron job.
 
-For long-prompt speed, use [llama-benchy](https://github.com/eugr/llama-benchy). This card will not pretend a short count is an 8k prefill.
+## Control panel
+
+Average users do not need the command line after the first start. On Mac, Linux, or Windows, with Python 3.11 or newer:
+
+```bash
+python3 -m open_model_card --ui
+```
+
+On Windows, if `python3` is not the command, use `py -m open_model_card --ui`.
+
+Then open http://127.0.0.1:8765. The page stays on that computer. It has three steps: where the model is running, which model, then run or compare. There is no Mac, Windows, or Linux installer yet. Python is the one requirement. Developers can import `open_model_card` and extend the checks without using the page.
+
+Do not publish this page to the internet. It can ask a local server to run a model.
+
 

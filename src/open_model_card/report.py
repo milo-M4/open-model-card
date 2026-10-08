@@ -12,7 +12,7 @@ from open_model_card.score import area_summary, strengths
 def build_report(meta: dict, speed: dict | None, tasks: list[dict], memory: dict) -> dict:
     return {
         "tool": "open-model-card",
-        "version": "0.3.0",
+        "version": "0.4.0",
         "created": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "endpoint": meta,
         "speed": speed,

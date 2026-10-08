@@ -15,6 +15,23 @@ from open_model_card.score import score_task
 from open_model_card.tasks import TASKS
 
 
+def run_card(base_url: str, model: str, api_key: str, timeout: float, out: Path, skip_speed: bool, skip_tasks: bool) -> dict:
+    chosen = model or (list_models(base_url, api_key, timeout) or [""])[0]
+    if not chosen:
+        raise EndpointError("No model id. Pass a model name.")
+    speed = None if skip_speed else stream_speed(base_url, chosen, api_key, timeout)
+    rows = []
+    if not skip_tasks:
+        for task in TASKS:
+            result = complete(base_url, chosen, task["prompt"], api_key, timeout)
+            rows.append(score_task(task, result["text"]))
+    port = urlparse(base_url).port or 80
+    report = build_report({"base_url": base_url, "model": chosen}, speed, rows, rss_mb_for_port(port))
+    json_path, md_path = write_report(report, out)
+    report["paths"] = {"json": str(json_path), "markdown": str(md_path)}
+    return report
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Write a repeatable report card for a local OpenAI-compatible model."
@@ -29,6 +46,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--list-criteria", action="store_true")
     parser.add_argument("--compare", default="", help="Directory of report JSON files to rank")
     parser.add_argument("--profile", default="", help="Operator notes markdown to include in the agent brief")
+    parser.add_argument("--ui", action="store_true", help="Open a local page to pick a model, run, and compare")
+    parser.add_argument("--ui-port", type=int, default=8765)
     args = parser.parse_args(argv)
 
     if args.compare:
@@ -50,6 +69,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Wrote {brief_path}")
         return 0 if reports else 2
 
+    if args.ui:
+        from open_model_card.ui import serve
+
+        serve(Path(args.out), args.ui_port)
+        return 0
+
     if args.list_criteria:
         print("Speed: time to first content token, generation tok/s, wall time. Short prompt only.")
         print("Memory: RSS of the process listening on the endpoint port, if the OS reports it.")
@@ -59,32 +84,22 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     try:
-        model = args.model or (list_models(args.base_url, args.api_key, args.timeout) or [""])[0]
-        if not model:
-            print("No model id. Pass --model.", file=sys.stderr)
-            return 2
-        speed = None if args.skip_speed else stream_speed(args.base_url, model, args.api_key, args.timeout)
-        rows = []
-        if not args.skip_tasks:
-            for task in TASKS:
-                result = complete(args.base_url, model, task["prompt"], args.api_key, args.timeout)
-                rows.append(score_task(task, result["text"]))
+        report = run_card(
+            args.base_url,
+            args.model,
+            args.api_key,
+            args.timeout,
+            Path(args.out),
+            args.skip_speed,
+            args.skip_tasks,
+        )
     except EndpointError as exc:
         print(str(exc), file=sys.stderr)
         return 2
 
-    port = urlparse(args.base_url).port or 80
-    memory = rss_mb_for_port(port)
-    report = build_report(
-        {"base_url": args.base_url, "model": model},
-        speed,
-        rows,
-        memory,
-    )
-    json_path, md_path = write_report(report, Path(args.out))
     print(to_markdown(report))
-    print(f"Wrote {md_path}")
-    print(f"Wrote {json_path}")
+    print(f"Wrote {report['paths']['markdown']}")
+    print(f"Wrote {report['paths']['json']}")
     return 0
 
 
