@@ -50,6 +50,11 @@ def plain_summary(report: dict) -> str:
     for row in tasks:
         verb = "did" if row.get("pass") else "did not"
         lines.append(f"It {verb} pass {row.get('area')}.")
+    unload = report.get("unload") or {}
+    if unload.get("unloaded"):
+        lines.append("The model was unloaded when the test finished. You can test another one.")
+    elif unload.get("attempted"):
+        lines.append("The test finished, but this server did not unload the model. Do not start another large model until this one is gone.")
     lines.append("The technical record is below. You can skip it if these sentences are enough.")
     return "\n".join(lines)
 

@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from urllib.parse import urlparse
 
-from open_model_card.client import EndpointError, complete, list_models, stream_speed
+from open_model_card.client import EndpointError, complete, list_models, stream_speed, unload_model
 from open_model_card.hostmem import rss_mb_for_port
 from open_model_card.report import build_report, to_markdown, write_report
 from open_model_card.score import score_task
@@ -34,9 +34,10 @@ def run_card(base_url: str, model: str, api_key: str, timeout: float, out: Path,
             note(f"Checking {task['area']}")
             result = complete(base_url, chosen, task["prompt"], api_key, timeout)
             rows.append(score_task(task, result["text"]))
-    note("Writing the card")
     port = urlparse(base_url).port or 80
     report = build_report({"base_url": base_url, "model": chosen}, speed, rows, rss_mb_for_port(port))
+    note("Unloading the model so another test can start")
+    report["unload"] = unload_model(base_url, chosen, api_key)
     json_path, md_path = write_report(report, out)
     report["paths"] = {"json": str(json_path), "markdown": str(md_path)}
     return report

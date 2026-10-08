@@ -29,6 +29,23 @@ def _request(url: str, payload: dict | None, api_key: str, timeout: float, metho
         raise EndpointError(f"could not reach {url}: {exc.reason}") from exc
 
 
+def server_root(base_url: str) -> str:
+    root = base_url.rstrip("/")
+    if root.endswith("/v1"):
+        root = root[:-3]
+    return root
+
+
+def unload_model(base_url: str, model: str, api_key: str, timeout: float = 60) -> dict:
+    """Ask a llama.cpp router to free the model. Other servers may refuse. Never raises."""
+    url = server_root(base_url) + "/models/unload"
+    try:
+        status, _raw = _request(url, {"model": model}, api_key, timeout, method="POST")
+    except EndpointError as exc:
+        return {"attempted": True, "unloaded": False, "detail": str(exc)[:180]}
+    return {"attempted": True, "unloaded": status == 200, "detail": f"HTTP {status}"}
+
+
 def list_models(base_url: str, api_key: str, timeout: float) -> list[str]:
     status, raw = _request(base_url.rstrip("/") + "/models", None, api_key, timeout)
     if status != 200:
