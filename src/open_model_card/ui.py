@@ -44,11 +44,17 @@ PAGE = """<!DOCTYPE html>
   }
   .keys { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.8rem; }
   button {
-    background: #142016; color: #9dff8a; border: 1px solid #3d8f4a;
-    padding: 0.7rem 0.9rem; cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    background: #e6c15a;
+    color: #14180c;
+    border: 2px solid #e6c15a;
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    font-weight: 700;
   }
-  button:hover, button:focus { background: #1d3a22; outline: 2px solid #e6c15a; }
-  button.primary { background: #1d3a22; color: #fff8dc; border-color: #e6c15a; }
+  button:hover, button:focus { background: #fff1b8; color: #14180c; outline: 2px solid #9dff8a; }
+  button.primary { background: #9dff8a; color: #14180c; border-color: #9dff8a; }
   .warn { border-color: #e6c15a; color: #ffe7a3; }
   pre {
     white-space: pre-wrap; min-height: 8rem; margin: 0;
@@ -79,6 +85,10 @@ PAGE = """<!DOCTYPE html>
     <input id="base" value="http://127.0.0.1:18434/v1">
     <label for="key">Password for that server, if it asks for one</label>
     <input id="key" type="password" autocomplete="off">
+    <div class="keys">
+      <button type="button" id="hermeskey">Use the Hermes key on this Mac</button>
+    </div>
+    <p class="help" id="keynote">The key stays on this computer. It is not shown here.</p>
   </section>
 
   <section class="panel">
@@ -115,8 +125,19 @@ function payload() {
   return {
     base_url: document.getElementById("base").value,
     api_key: document.getElementById("key").value,
-    model: document.getElementById("model").value
+    model: document.getElementById("model").value,
+    use_hermes_key: window.useHermesKey === true
   };
+}
+function plain(err) {
+  const msg = String(err && err.message || err);
+  if (msg.indexOf("401") >= 0 || msg.indexOf("API Key") >= 0) {
+    return "That server wants a password. Paste it above, or press Use the Hermes key on this Mac.";
+  }
+  if (msg.indexOf("could not reach") >= 0) {
+    return "That server is not running. Start it, then press List models again.";
+  }
+  return msg;
 }
 async function post(path, body) {
   const res = await fetch(path, {
@@ -129,8 +150,15 @@ async function post(path, body) {
   return data;
 }
 document.querySelectorAll("[data-url]").forEach((button) => {
-  button.onclick = () => { document.getElementById("base").value = button.dataset.url; };
+  button.onclick = () => {
+    document.getElementById("base").value = button.dataset.url;
+    window.useHermesKey = false;
+  };
 });
+document.getElementById("hermeskey").onclick = () => {
+  window.useHermesKey = true;
+  document.getElementById("keynote").textContent = "Hermes key will be used from this Mac. It is not shown.";
+};
 document.getElementById("list").onclick = async () => {
   out.textContent = "Asking the server which models it has...";
   try {
@@ -149,7 +177,7 @@ document.getElementById("list").onclick = async () => {
     }
     out.textContent = "Choose a model in step 2, then press Run the test.";
   } catch (err) {
-    out.textContent = "Could not reach that server. " + err.message;
+    out.textContent = plain(err);
   }
 };
 document.getElementById("scan").onclick = async () => {
@@ -164,7 +192,7 @@ document.getElementById("run").onclick = async () => {
     const data = await post("/api/run", payload());
     out.textContent = data.markdown;
   } catch (err) {
-    out.textContent = err.message;
+    out.textContent = plain(err);
   }
 };
 document.getElementById("compare").onclick = async () => {
@@ -180,6 +208,19 @@ document.getElementById("compare").onclick = async () => {
 </body>
 </html>
 """
+
+
+def _key(data: dict) -> str:
+    typed = data.get("api_key") or ""
+    if typed or not data.get("use_hermes_key"):
+        return typed
+    path = Path.home() / ".hermes" / "runtimes" / "llamacpp" / "server.json"
+    if not path.is_file():
+        raise EndpointError("No Hermes key file on this Mac.")
+    saved = json.loads(path.read_text(encoding="utf-8")).get("api_key") or ""
+    if not saved:
+        raise EndpointError("The Hermes key file has no key.")
+    return saved
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -215,7 +256,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             data = self._read()
             if path == "/api/models":
-                models = list_models(data.get("base_url") or "", data.get("api_key") or "", 15)
+                models = list_models(data.get("base_url") or "", _key(data), 15)
                 self._json(200, {"models": models})
                 return
             if path == "/api/scan":
@@ -225,7 +266,7 @@ class Handler(BaseHTTPRequestHandler):
                 report = run_card(
                     data.get("base_url") or "",
                     data.get("model") or "",
-                    data.get("api_key") or "",
+                    _key(data),
                     180,
                     self.out_dir,
                     False,
