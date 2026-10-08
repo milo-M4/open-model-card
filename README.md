@@ -61,7 +61,12 @@ Run one model at a time. Save each card. Then compare them:
 PYTHONPATH=src python3 -m open_model_card --compare reports
 ```
 
-That writes `reports/choice.md`. It does not pick one winner for every job.
+That writes `reports/choice.md` and `reports/agent-brief.md`. The brief is the file you hand to Hermes, or any agent you already use. This tool does not call a model to write it.
+
+Copy `operator.md.example` to `reports/operator.md` and fill in how you work before you compare. If that file is missing, the brief says the notes are blank and tells the reviewing agent not to guess.
+
+The reviewing agent is instructed to recommend per job, cite the table, refuse to pair two 20 GB models, and say when a real transcript is still required.
+
 
 | Job | Rule |
 |---|---|

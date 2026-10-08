@@ -1,0 +1,11 @@
+# Operator notes
+
+Fill this in before you hand the brief to your agent. Delete the prompts you do not need.
+
+- Machine: Apple M4 Pro, 48 GB
+- Jobs this model must do: meeting transcript summaries, one operations task at a time
+- Jobs that can be small and fast: email check, daily rollup
+- What must not fail: names, dates, decisions, and amounts in a transcript
+- What you will not pay for: a second API just to pick a local model
+- How you like work done: one task, a read-back, no extra seats woken
+- Models you refuse to run at the same time: llama.cpp 35B and oMLX 35B

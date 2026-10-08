@@ -28,9 +28,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--skip-tasks", action="store_true")
     parser.add_argument("--list-criteria", action="store_true")
     parser.add_argument("--compare", default="", help="Directory of report JSON files to rank")
+    parser.add_argument("--profile", default="", help="Operator notes markdown to include in the agent brief")
     args = parser.parse_args(argv)
 
     if args.compare:
+        from open_model_card.brief import agent_brief, read_operator_notes
         from open_model_card.compare import comparison_markdown, load_reports, recommend
 
         folder = Path(args.compare)
@@ -39,8 +41,13 @@ def main(argv: list[str] | None = None) -> int:
         text = comparison_markdown(reports, advice)
         out = folder / "choice.md"
         out.write_text(text, encoding="utf-8")
+        profile = Path(args.profile) if args.profile else folder / "operator.md"
+        notes, filled = read_operator_notes(profile if profile.is_file() else None)
+        brief_path = folder / "agent-brief.md"
+        brief_path.write_text(agent_brief(text, notes, filled), encoding="utf-8")
         print(text)
         print(f"Wrote {out}")
+        print(f"Wrote {brief_path}")
         return 0 if reports else 2
 
     if args.list_criteria:

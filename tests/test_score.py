@@ -1,5 +1,6 @@
 import unittest
 
+from open_model_card.brief import agent_brief
 from open_model_card.compare import recommend
 from open_model_card.report import build_report, to_markdown
 from open_model_card.score import score_task
@@ -97,6 +98,15 @@ class CompareTests(unittest.TestCase):
         self.assertEqual(advice["operator"]["model"], "large")
         self.assertEqual(advice["cron"]["model"], "small")
         self.assertIn("large", advice["do_not_pair"])
+
+
+class BriefTests(unittest.TestCase):
+    def test_blank_notes_are_marked(self):
+        text = agent_brief("# Model choice\n\n| Model |", "Machine:", False)
+        self.assertIn("Do not invent a benchmark number", text)
+        self.assertIn("blank template", text)
+        self.assertIn("Machine:", text)
+        self.assertNotIn("openai", text.lower())
 
 
 if __name__ == "__main__":
