@@ -90,4 +90,7 @@ Then open http://127.0.0.1:8765. The page stays on that computer. It has three s
 
 Do not publish this page to the internet. It can ask a local server to run a model.
 
+Before a test: pause routines, cron jobs, and other agent chats. The test loads one model into memory. It will not start if another model is already loaded, and it will not unload a model another agent is using. When the test finishes, it asks that server to unload the model it just tested. If you leave other AI work running, the test can fail or that work can fail.
+
+
 

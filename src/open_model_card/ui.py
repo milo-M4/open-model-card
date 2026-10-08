@@ -42,6 +42,7 @@ PAGE = """<!DOCTYPE html>
   p.help { color: #b7d7ae; margin: 0 0 0.7rem; }
   label { display: block; margin: 0.7rem 0 0.25rem; }
   input, select, button { font: inherit; }
+  label input { width: auto; margin-right: 0.4rem; }
   input, select {
     width: 100%; box-sizing: border-box; padding: 0.65rem;
     background: #071008; color: #d7f5c8; border: 1px solid #3d8f4a;
@@ -73,7 +74,9 @@ PAGE = """<!DOCTYPE html>
     <span><span class="lamp"></span> LOCAL ONLY</span>
   </header>
   <section class="panel warn">
-    <p class="help">Test one model at a time. A new test will not start if a model is still loaded. This panel asks the server to unload when a test finishes. If that fails, wait before you press Run again.</p>
+    <p class="help">This test loads a model into memory. Only one model can be loaded at a time. When the test finishes, this panel asks that server to unload it.</p>
+    <p class="help">It will not unload a model another agent is already using. If one is still loaded, the test stops instead of cutting that work off.</p>
+    <p class="help">Pause routines, cron jobs, and other agent chats before you run a test. If you do not, the test can fail, or that other work can fail.</p>
   </section>
 
   <section class="panel">
@@ -111,6 +114,7 @@ PAGE = """<!DOCTYPE html>
     <div class="step">STEP 3</div>
     <h2>Run, then read</h2>
     <p class="help">Run writes a card. Compare reads the cards you have already saved and writes a brief you can hand to your own agent.</p>
+    <label><input id="paused" type="checkbox"> I have paused other routines, cron jobs, and agent chats.</label>
     <div class="keys">
       <button type="button" class="primary" id="run">Run the test</button>
       <button type="button" id="compare">Compare saved cards</button>
@@ -192,6 +196,10 @@ document.getElementById("scan").onclick = async () => {
     : "No model files in the usual folders. You can still test a model that a server is already running.";
 };
 document.getElementById("run").onclick = async () => {
+  if (!document.getElementById("paused").checked) {
+    out.textContent = "Pause other routines, cron jobs, and agent chats first. Then check the box and press Run the test. This test loads a model. Only one model can be in memory.";
+    return;
+  }
   const lamp = document.getElementById("lamp");
   const statusText = document.getElementById("statusText");
   lamp.className = "lamp busy";
