@@ -10,7 +10,7 @@ class UiTests(unittest.TestCase):
         self.assertIn("STEP 1", PAGE)
         self.assertIn("Where is the model running?", PAGE)
         self.assertIn("appearance: none", PAGE)
-        self.assertIn("Use the Hermes key on this Mac", PAGE)
+        self.assertIn("Watch the light", PAGE)
         self.assertNotIn("sudo", PAGE)
 
     def test_page_serves_locally(self):

@@ -15,16 +15,26 @@ from open_model_card.score import score_task
 from open_model_card.tasks import TASKS
 
 
-def run_card(base_url: str, model: str, api_key: str, timeout: float, out: Path, skip_speed: bool, skip_tasks: bool) -> dict:
+def run_card(base_url: str, model: str, api_key: str, timeout: float, out: Path, skip_speed: bool, skip_tasks: bool, progress=None) -> dict:
+    def note(message: str) -> None:
+        if progress:
+            progress(message)
+
+    note("Asking the server which model to test")
     chosen = model or (list_models(base_url, api_key, timeout) or [""])[0]
     if not chosen:
         raise EndpointError("No model id. Pass a model name.")
-    speed = None if skip_speed else stream_speed(base_url, chosen, api_key, timeout)
+    speed = None
+    if not skip_speed:
+        note("Measuring how fast a short reply starts and finishes")
+        speed = stream_speed(base_url, chosen, api_key, timeout)
     rows = []
     if not skip_tasks:
         for task in TASKS:
+            note(f"Checking {task['area']}")
             result = complete(base_url, chosen, task["prompt"], api_key, timeout)
             rows.append(score_task(task, result["text"]))
+    note("Writing the card")
     port = urlparse(base_url).port or 80
     report = build_report({"base_url": base_url, "model": chosen}, speed, rows, rss_mb_for_port(port))
     json_path, md_path = write_report(report, out)

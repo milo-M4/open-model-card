@@ -2,7 +2,7 @@ import unittest
 
 from open_model_card.brief import agent_brief
 from open_model_card.compare import recommend
-from open_model_card.report import build_report, to_markdown
+from open_model_card.report import build_report, plain_summary, to_markdown
 from open_model_card.score import score_task
 from open_model_card.tasks import TASKS
 
@@ -51,6 +51,19 @@ class ScoreTests(unittest.TestCase):
         report = build_report({"model": "demo", "base_url": "http://127.0.0.1:9/v1"}, None, [row], {"available": False})
         text = to_markdown(report)
         self.assertIn("demo", text)
+
+    def test_plain_summary_is_sentences(self):
+        row = score_task(task("exact-reply"), "BENCHOK")
+        report = build_report(
+            {"model": "demo", "base_url": "http://127.0.0.1:9/v1"},
+            {"ttft_s": 2.5, "tok_per_s": 40},
+            [row],
+            {"available": True, "rss_mb": 28000},
+        )
+        text = plain_summary(report)
+        self.assertIn("started answering in 2.5 seconds", text)
+        self.assertIn("large model", text)
+        self.assertNotIn("tok/s", text)
 
 
 def _card(name, replies, tok_s, rss):

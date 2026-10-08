@@ -28,6 +28,32 @@ def build_report(meta: dict, speed: dict | None, tasks: list[dict], memory: dict
     }
 
 
+def plain_summary(report: dict) -> str:
+    """Sentences for a person. The markdown table stays the technical record."""
+    model = (report.get("endpoint") or {}).get("model") or "This model"
+    speed = report.get("speed") or {}
+    memory = report.get("memory") or {}
+    tasks = report.get("tasks") or []
+    passed = sum(1 for row in tasks if row.get("pass"))
+    lines = [f"{model} finished this test."]
+    if speed.get("ttft_s") is not None:
+        lines.append(f"It started answering in {speed['ttft_s']} seconds.")
+    if speed.get("tok_per_s") is not None:
+        lines.append(f"After that, it wrote about {speed['tok_per_s']} small word-pieces a second.")
+    if memory.get("available") and memory.get("rss_mb") is not None:
+        gb = float(memory["rss_mb"]) / 1024
+        lines.append(f"The server was using about {gb:.1f} GB of memory.")
+        if gb >= 20:
+            lines.append("That is a large model. Do not run another large model at the same time.")
+    if tasks:
+        lines.append(f"It passed {passed} of {len(tasks)} small checks.")
+    for row in tasks:
+        verb = "did" if row.get("pass") else "did not"
+        lines.append(f"It {verb} pass {row.get('area')}.")
+    lines.append("The technical record is below. You can skip it if these sentences are enough.")
+    return "\n".join(lines)
+
+
 def to_markdown(report: dict) -> str:
     meta = report["endpoint"]
     lines = [

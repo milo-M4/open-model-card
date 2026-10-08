@@ -131,6 +131,30 @@ def _choice(report: dict | None, reason: str, missing: str) -> dict:
     return {"model": _model(report), "reason": note, "pass_rate": _pass_rate(report), "tok_per_s": _tok_s(report), "rss_mb": rss}
 
 
+def plain_choice(advice: dict) -> str:
+    labels = {
+        "transcripts": "For meeting transcripts",
+        "operator": "For day-to-day work that must follow instructions",
+        "cron": "For light repeating jobs",
+    }
+    lines = ["Here is the side-by-side result.", ""]
+    for job, label in labels.items():
+        choice = advice.get(job) or {}
+        model = choice.get("model") or "no model yet"
+        lines.append(f"{label}: {model}. {choice.get('reason')}")
+    paired = advice.get("do_not_pair") or []
+    if paired:
+        lines.append("")
+        lines.append("Do not run these at the same time: " + ", ".join(paired) + ".")
+    lines.extend([
+        "",
+        "To ask your own agent, give it the file reports/agent-brief.md.",
+        "Say: Read this brief and recommend a model for my jobs. Use only the numbers in the file. Do not invent a score.",
+        "If the operator notes in that file are still blank, fill them in first or the agent will not know your work.",
+    ])
+    return "\n".join(lines)
+
+
 def comparison_markdown(reports: list[dict], advice: dict) -> str:
     lines = [
         "# Model choice",

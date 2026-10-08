@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
@@ -10,9 +12,9 @@ from urllib.parse import urlparse
 from open_model_card.brief import agent_brief, read_operator_notes
 from open_model_card.cli import run_card
 from open_model_card.client import EndpointError, list_models
-from open_model_card.compare import comparison_markdown, load_reports, recommend
+from open_model_card.compare import comparison_markdown, load_reports, plain_choice, recommend
 from open_model_card.discover import find_model_files
-from open_model_card.report import to_markdown
+from open_model_card.report import plain_summary, to_markdown
 
 PAGE = """<!DOCTYPE html>
 <html lang="en">
@@ -31,7 +33,9 @@ PAGE = """<!DOCTYPE html>
   main { max-width: 56rem; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
   header { display: flex; justify-content: space-between; gap: 1rem; align-items: center; border-bottom: 2px solid #3d8f4a; padding-bottom: 0.8rem; }
   h1 { font-size: 1.4rem; letter-spacing: 0.08em; margin: 0; color: #9dff8a; }
-  .lamp { width: 0.8rem; height: 0.8rem; border-radius: 50%; background: #9dff8a; box-shadow: 0 0 8px #9dff8a; display: inline-block; }
+  .lamp { width: 0.9rem; height: 0.9rem; border-radius: 50%; background: #9dff8a; box-shadow: 0 0 8px #9dff8a; display: inline-block; }
+  .lamp.busy { background: #e6c15a; box-shadow: 0 0 8px #e6c15a; animation: pulse 1s steps(2) infinite; }
+  @keyframes pulse { 50% { opacity: 0.25; } }
   .panel { border: 1px solid #2f6b38; margin-top: 1rem; padding: 1rem; background: #0c120d; }
   .step { color: #e6c15a; font-size: 0.85rem; letter-spacing: 0.12em; }
   h2 { margin: 0.2rem 0 0.6rem; font-size: 1.15rem; }
@@ -116,7 +120,8 @@ PAGE = """<!DOCTYPE html>
   <section class="panel">
     <div class="step">READOUT</div>
     <h2>Result</h2>
-    <pre id="out">Ready. Start with step 1.</pre>
+    <p id="status"><span class="lamp" id="lamp"></span> <span id="statusText">Idle. Start with step 1.</span></p>
+    <pre id="out">The plain summary will appear here. The technical record follows it.</pre>
   </section>
 </main>
 <script>
@@ -187,11 +192,34 @@ document.getElementById("scan").onclick = async () => {
     : "No model files in the usual folders. You can still test a model that a server is already running.";
 };
 document.getElementById("run").onclick = async () => {
-  out.textContent = "Running. This can take several minutes. Leave this page open.";
+  const lamp = document.getElementById("lamp");
+  const statusText = document.getElementById("statusText");
+  lamp.className = "lamp busy";
+  statusText.textContent = "Starting. The light stays on while the test is working.";
+  out.textContent = "Working. A quiet page does not mean it stopped. Watch the light and the line above.";
   try {
-    const data = await post("/api/run", payload());
-    out.textContent = data.markdown;
+    await post("/api/run", payload());
+    while (true) {
+      const status = await fetch("/api/status").then((res) => res.json());
+      const elapsed = status.elapsed_s == null ? "" : " (" + status.elapsed_s + "s)";
+      statusText.textContent = (status.step || "Working") + elapsed;
+      if (status.state === "done") {
+        lamp.className = "lamp";
+        statusText.textContent = "Finished.";
+        out.textContent = status.plain + "\n\n--- Technical record ---\n\n" + status.markdown;
+        return;
+      }
+      if (status.state === "error") {
+        lamp.className = "lamp";
+        statusText.textContent = "Stopped.";
+        out.textContent = plain({ message: status.error });
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
   } catch (err) {
+    lamp.className = "lamp";
+    statusText.textContent = "Stopped.";
     out.textContent = plain(err);
   }
 };
@@ -199,7 +227,7 @@ document.getElementById("compare").onclick = async () => {
   out.textContent = "Reading saved cards...";
   try {
     const data = await post("/api/compare");
-    out.textContent = data.brief;
+    out.textContent = data.plain + "\n\n--- Side-by-side record ---\n\n" + data.table;
   } catch (err) {
     out.textContent = err.message;
   }
@@ -221,6 +249,61 @@ def _key(data: dict) -> str:
     if not saved:
         raise EndpointError("The Hermes key file has no key.")
     return saved
+
+
+JOB = {"state": "idle", "step": "Idle", "started": 0.0, "error": "", "plain": "", "markdown": ""}
+JOB_LOCK = threading.Lock()
+
+
+def _status() -> dict:
+    with JOB_LOCK:
+        elapsed = None
+        if JOB["state"] == "running" and JOB["started"]:
+            elapsed = round(time.time() - JOB["started"], 1)
+        return {
+            "state": JOB["state"],
+            "step": JOB["step"],
+            "elapsed_s": elapsed,
+            "error": JOB["error"],
+            "plain": JOB["plain"],
+            "markdown": JOB["markdown"],
+        }
+
+
+def _start_run(data: dict, out_dir: Path) -> None:
+    with JOB_LOCK:
+        if JOB["state"] == "running":
+            return
+        JOB.update(state="running", step="Starting", started=time.time(), error="", plain="", markdown="")
+
+    def work() -> None:
+        try:
+            def progress(message: str) -> None:
+                with JOB_LOCK:
+                    JOB["step"] = message
+
+            report = run_card(
+                data.get("base_url") or "",
+                data.get("model") or "",
+                _key(data),
+                180,
+                out_dir,
+                False,
+                False,
+                progress,
+            )
+            with JOB_LOCK:
+                JOB["plain"] = plain_summary(report)
+                JOB["markdown"] = to_markdown(report)
+                JOB["step"] = "Finished"
+                JOB["state"] = "done"
+        except Exception as exc:  # noqa: BLE001 — the panel has to show the failure
+            with JOB_LOCK:
+                JOB["error"] = str(exc)
+                JOB["step"] = "Stopped"
+                JOB["state"] = "error"
+
+    threading.Thread(target=work, daemon=True).start()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -249,6 +332,9 @@ class Handler(BaseHTTPRequestHandler):
         if urlparse(self.path).path == "/":
             self._send(200, PAGE.encode(), "text/html; charset=utf-8")
             return
+        if urlparse(self.path).path == "/api/status":
+            self._json(200, _status())
+            return
         self._json(404, {"error": "not found"})
 
     def do_POST(self) -> None:
@@ -263,28 +349,21 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, {"files": find_model_files()})
                 return
             if path == "/api/run":
-                report = run_card(
-                    data.get("base_url") or "",
-                    data.get("model") or "",
-                    _key(data),
-                    180,
-                    self.out_dir,
-                    False,
-                    False,
-                )
-                self._json(200, {"markdown": to_markdown(report), "model": report["endpoint"]["model"]})
+                _start_run(data, self.out_dir)
+                self._json(200, {"started": True})
                 return
             if path == "/api/compare":
                 reports = load_reports(self.out_dir)
                 if not reports:
-                    self._json(400, {"error": "No saved cards yet. Run a test first."})
+                    self._json(400, {"error": "No saved cards yet. Run a test first. Compare reads those saved cards."})
                     return
-                text = comparison_markdown(reports, recommend(reports))
+                advice = recommend(reports)
+                text = comparison_markdown(reports, advice)
                 notes, filled = read_operator_notes(self.out_dir / "operator.md")
                 brief = agent_brief(text, notes, filled)
                 (self.out_dir / "choice.md").write_text(text, encoding="utf-8")
                 (self.out_dir / "agent-brief.md").write_text(brief, encoding="utf-8")
-                self._json(200, {"brief": brief})
+                self._json(200, {"plain": plain_choice(advice), "table": text, "brief": brief})
                 return
         except EndpointError as exc:
             self._json(400, {"error": str(exc)})
