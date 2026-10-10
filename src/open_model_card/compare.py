@@ -2,12 +2,18 @@
 
 The recommendation is a rule, not a hidden score. If the evidence is missing,
 the rule says so instead of picking a winner.
+
+Supports both v1.0 cards (with model/engine fingerprints) and v0.4 cards
+(legacy endpoint.base_url). v0.4 cards can't be cross-machine filtered
+because they have no machine fingerprint.
 """
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
+
+from open_model_card.schema import MACHINE_LOCAL
 
 
 LARGE_RSS_MB = 20000
@@ -21,7 +27,53 @@ def load_reports(directory: Path) -> list[dict]:
 
 
 def _model(report: dict) -> str:
+    """Model name. Reads v1 first, falls back to v0.4 endpoint.model."""
+    v1 = (report.get("model") or {}).get("id")
+    if v1:
+        return str(v1)
     return str((report.get("endpoint") or {}).get("model") or "unknown")
+
+
+def _engine(report: dict) -> str:
+    """Engine family + name. Returns 'unknown' for legacy v0.4 cards."""
+    e = report.get("engine") or {}
+    name = e.get("name") or e.get("family") or "unknown"
+    family = e.get("family") or "unknown"
+    return f"{family}:{name}"
+
+
+def _machine_host(report: dict) -> str:
+    m = report.get("machine") or {}
+    return m.get("hostname_hash") or "unknown"
+
+
+def filter_same_machine(reports: list[dict]) -> list[dict]:
+    """Return only the cards from the most-represented machine.
+
+    Used for the default compare view.
+    """
+    counts: dict[str, int] = {}
+    for r in reports:
+        h = _machine_host(r)
+        counts[h] = counts.get(h, 0) + 1
+    if not counts:
+        return reports
+    main = max(counts.items(), key=lambda kv: kv[1])[0]
+    return [r for r in reports if _machine_host(r) == main]
+
+
+def filter_cross_machine(reports: list[dict]) -> list[dict]:
+    """Strip machine-local fields from every card for cross-machine view."""
+    import copy
+    out = []
+    for r in reports:
+        r2 = copy.deepcopy(r)
+        if "speed" in r2:
+            r2["speed"] = None
+        if "memory" in r2:
+            r2["memory"] = {"comparability": MACHINE_LOCAL, "available": False, "reason": "hidden in cross-machine compare"}
+        out.append(r2)
+    return out
 
 
 def _area_passed(report: dict, area: str) -> bool | None:
@@ -128,7 +180,15 @@ def _choice(report: dict | None, reason: str, missing: str) -> dict:
     rss = _rss(report)
     if rss is not None and rss >= LARGE_RSS_MB:
         note += f". It used {rss:.0f} MB. Do not load another large model beside it."
-    return {"model": _model(report), "reason": note, "pass_rate": _pass_rate(report), "tok_per_s": _tok_s(report), "rss_mb": rss}
+    return {
+        "model": _model(report),
+        "engine": _engine(report),
+        "machine": _machine_host(report),
+        "reason": note,
+        "pass_rate": _pass_rate(report),
+        "tok_per_s": _tok_s(report),
+        "rss_mb": rss,
+    }
 
 
 def plain_choice(advice: dict) -> str:
@@ -161,13 +221,16 @@ def comparison_markdown(reports: list[dict], advice: dict) -> str:
         "",
         "One large model at a time. This is a guide from the cards on disk, not a leaderboard.",
         "",
-        "| Model | Pass rate | tok/s | RSS MB | Stable |",
+        "| Model (engine) | Pass rate | tok/s | RSS MB | Stable |",
         "|---|---|---|---|---|",
     ]
     for report in reports:
         rate = _pass_rate(report)
+        model = _model(report)
+        engine = _engine(report)
+        label = f"{model} ({engine})" if engine != "unknown:unknown" else model
         lines.append(
-            f"| {_model(report)} | "
+            f"| {label} | "
             f"{'n/a' if rate is None else f'{rate:.0%}'} | "
             f"{_tok_s(report) if _tok_s(report) is not None else 'n/a'} | "
             f"{_rss(report) if _rss(report) is not None else 'n/a'} | "
@@ -177,7 +240,9 @@ def comparison_markdown(reports: list[dict], advice: dict) -> str:
     for job in ("transcripts", "operator", "cron"):
         choice = advice[job]
         model = choice.get("model") or "none"
-        lines.append(f"- **{job}:** {model}. {choice.get('reason')}")
+        engine = choice.get("engine") or ""
+        label = f"{model} ({engine})" if engine and engine != "unknown:unknown" else model
+        lines.append(f"- **{job}:** {label}. {choice.get('reason')}")
     paired = advice.get("do_not_pair") or []
     if paired:
         lines.append("")

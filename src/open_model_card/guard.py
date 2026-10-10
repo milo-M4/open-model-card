@@ -1,15 +1,56 @@
-"""Stop a new test while a model is still resident."""
+"""Pre-test state check.
+
+In v1.0 the UI handles the "another model is loaded" case by ASKING the
+operator before unloading. This module just answers the question
+"what's loaded?" so the UI can phrase the question correctly.
+
+`is_model_loaded` — true when the named model is in `loaded` or
+`loading` state on the engine.
+
+`find_loaded_model` — name of the first loaded model on the engine, or
+None if no models are loaded.
+
+The legacy `find_block` and `block_reason` functions are kept for
+backward compatibility with any callers that import them.
+"""
 
 from __future__ import annotations
 
 from urllib.parse import urlparse
 
 from open_model_card.client import EndpointError, model_rows
+from open_model_card.engines import REGISTRY
 from open_model_card.hostmem import rss_mb_for_port
 
 LARGE_RSS_MB = 8000
 WATCH_PORTS = (18434, 8000, 11434)
 
+
+def is_model_loaded(family: str, url: str, model_id: str, key: str | None, timeout: float = 5.0) -> bool:
+    adapter = REGISTRY.get(family)
+    if adapter is None:
+        return False
+    try:
+        return bool(adapter.is_loaded(url, model_id, key, timeout))
+    except Exception:
+        return False
+
+
+def find_loaded_model(family: str, url: str, key: str | None, timeout: float = 5.0) -> str | None:
+    """Return the id of the first loaded model on the engine, or None."""
+    adapter = REGISTRY.get(family)
+    if adapter is None:
+        return None
+    try:
+        for m in adapter.list_models(url, key, timeout):
+            if m.state in ("loaded", "loading"):
+                return m.id
+    except Exception:
+        return None
+    return None
+
+
+# Legacy API — kept for callers that haven't migrated yet.
 
 def _port(base_url: str) -> int | None:
     return urlparse(base_url).port

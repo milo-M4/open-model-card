@@ -81,7 +81,11 @@ def complete(base_url: str, model: str, prompt: str, api_key: str, timeout: floa
     text = ""
     choices = body.get("choices") or []
     if choices:
-        text = ((choices[0].get("message") or {}).get("content")) or ""
+        msg = choices[0].get("message") or {}
+        # For thinking models, combine content and reasoning_content
+        content = msg.get("content") or ""
+        reasoning = msg.get("reasoning_content") or ""
+        text = content + "\n" + reasoning if reasoning else content
     usage = body.get("usage") or {}
     return {"text": text, "elapsed_s": round(elapsed, 3), "usage": usage}
 
@@ -135,7 +139,8 @@ def stream_speed(base_url: str, model: str, api_key: str, timeout: float, max_to
             if not choices:
                 continue
             delta = (choices[0].get("delta") or {})
-            piece = delta.get("content") or ""
+            # For thinking models, combine content and reasoning_content
+            piece = (delta.get("content") or "") + (delta.get("reasoning_content") or "")
             if piece and first_content is None:
                 first_content = time.perf_counter()
             if piece:
